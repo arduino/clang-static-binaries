@@ -37,11 +37,12 @@ jobs:
     - name: get llvm-project
       run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${RELEASE}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
 
-    - name: prepare build dir
-      run: cd ${RELEASE} && mkdir build && cd build
-
     - name: cmake
-      run: cmake -S ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
+      run: | 
+        cd ${RELEASE}
+        mkdir build
+        cd build
+        cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
 
     - name: build
       run: make clang-format clangd
