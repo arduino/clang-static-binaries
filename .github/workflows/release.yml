@@ -1,0 +1,51 @@
+name: release
+
+on:
+  push
+  # tags:
+  #   - "[0-9]+.[0-9]+.[0-9]+*"
+
+jobs:
+  build-win-mac:
+    name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
+    runs-on:
+      ${{ matrix.config.os }}
+    strategy:
+      matrix:
+        config:
+          # - name: darwin # TODO still to test
+          #   os: macos-latest
+          #   arch: amd64
+          # - name: windows # TODO still to test
+            # os: windows-latest
+            # arch: 386
+            # extension: .exe
+          - name: windows
+            os: windows-latest
+            os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
+            arch: amd64
+            extension: .exe
+    env:
+      COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
+      POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=g++-10 -DCMAKE_C_COMPILER=gcc-10'
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: get llvm-project
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/llvm-project-12.0.0.src.tar.xz | tar -xJ
+
+    - name: prepare build dir
+      run: cd llvm-project-12.0.0.src/ && mkdir build && cd build
+
+    - name: cmake
+      run: cmake -S ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
+
+    - name: build
+      run: make clang-format clangd
+
+    - name: upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: clang-tools
+        path: bin/clang*
