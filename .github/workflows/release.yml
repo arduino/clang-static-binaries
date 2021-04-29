@@ -13,17 +13,21 @@ jobs:
     strategy:
       matrix:
         config:
-          # - name: darwin # TODO still to test
-          #   os: macos-latest
-          #   arch: amd64
+          - name: darwin
+            os: macos-latest
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 ${POSIX_CMAKE_ARGS}'
+            build-args: '-j$(sysctl -n hw.ncpu)'
+            # bindir: '/build/bin' # check if useful
+            arch: amd64
           # - name: windows # TODO still to test
-            # os: windows-latest
-            # arch: 386
-            # extension: .exe
+          #   os: windows-latest
+          #   arch: 386
+          #   extension: .exe
           - name: windows
             os: windows-latest
             os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
+            # bindir: '/build/MinSizeRel/bin' # check if useful
             arch: amd64
             extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
             extension: .exe
