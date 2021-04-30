@@ -47,15 +47,15 @@ jobs:
         cd ${RELEASE}
         mkdir build
         cd build
-        cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
+        cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${RELEASE}/build ${{ matrix.build-args }} --target clang-format clangd
+      run: cmake --build ${RELEASE}/build ${{ matrix.config.build-args }} --target clang-format clangd
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: clang-tools
+        name: clang-tools-${{ matrix.config.name }}-${{ matrix.config.arch }}
         path: bin/clang*
 
   build-linux:
@@ -101,13 +101,13 @@ jobs:
         cd ${RELEASE}
         mkdir build
         cd build
-        cmake -G Ninja ../llvm -DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" ${{ matrix.os-cmake-args }}
+        cmake -G Ninja ../llvm -DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" ${{ matrix.config.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${RELEASE}/build ${{ matrix.build-args }} --target clang-format clangd
+      run: ninja clang-format clangd
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: clang-tools
+        name: clang-tools-${{ matrix.config.name }}-${{ matrix.config.arch }}
         path: bin/clang*
