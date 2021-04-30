@@ -4,6 +4,11 @@ on:
   push
   # tags:
   #   - "[0-9]+.[0-9]+.[0-9]+*"
+env:
+  COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
+  POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel'
+  RELEASE: 'llvm-project-12.0.0.src'
+  STANDARD_GCC:  '-DCMAKE_CXX_COMPILER=g++-10 -DCMAKE_C_COMPILER=gcc-10'
 
 jobs:
   build-win-mac:
@@ -15,7 +20,7 @@ jobs:
         config:
           - name: darwin
             os: macos-latest
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 ${POSIX_CMAKE_ARGS}'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 ${{ env.POSIX_CMAKE_ARGS }} ${{ env.STANDARD_GCC }}'
             build-args: '-j$(sysctl -n hw.ncpu)'
             # bindir: '/build/bin' # check if useful
             arch: amd64
@@ -29,28 +34,24 @@ jobs:
             build-args: '--config MinSizeRel'
             # bindir: '/build/MinSizeRel/bin' # check if useful
             arch: amd64
-            extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
+            extra-tar-args: '--exclude=${{ env.RELEASE }}/clang/test/Driver/Inputs/* --exclude=${{ env.RELEASE }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ env.RELEASE }}/libclc/amdgcn-mesa3d'
             extension: .exe
-    env:
-      COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
-      POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=g++-10 -DCMAKE_C_COMPILER=gcc-10'
-      RELEASE: 'llvm-project-12.0.0.src'
     defaults:
       run:
         shell: bash
     steps:
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${RELEASE}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${{ env.RELEASE }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
 
     - name: cmake
-      run: | 
-        cd ${RELEASE}
+      run: |
+        cd ${{ env.RELEASE }}
         mkdir build
         cd build
         cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${RELEASE}/build ${{ matrix.build-args }} --target clang-format clangd
+      run: cmake --build ${{ env.RELEASE }}/build ${{ matrix.build-args }} --target clang-format clangd
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
@@ -62,19 +63,15 @@ jobs:
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
     runs-on:
       ubuntu-latest
-    env:
-      RELEASE: 'llvm-project-12.0.0.src'
-      COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
-      POSIX_CMAKE_ARGS: '-DCMAKE_BUILD_TYPE=MinSizeRel'
     strategy:
       matrix:
         config:
           - name: linux
             arch: amd64
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" ${POSIX_CMAKE_ARGS} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" ${{ env.POSIX_CMAKE_ARGS }} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
           - name: linux
             arch: 386
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" ${POSIX_CMAKE_ARGS} -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" ${{ env.POSIX_CMAKE_ARGS }} -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
           # - name: linux
           #   arch: arm
           #   toolchain: arm-linux-gnueabihf
@@ -90,20 +87,20 @@ jobs:
 
     steps:
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${RELEASE}.tar.xz | tar -xJ
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${{ env.RELEASE }}.tar.xz | tar -xJ
 
     - name: install Ninja
       run: apt update && apt install ninja-build
 
     - name: cmake
-      run: | 
-        cd ${RELEASE}
+      run: |
+        cd ${{ env.RELEASE }}
         mkdir build
         cd build
         cmake -G Ninja ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${RELEASE}/build ${{ matrix.build-args }} --target clang-format clangd
+      run: cmake --build ${{ env.RELEASE }}/build ${{ matrix.build-args }} --target clang-format clangd
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
