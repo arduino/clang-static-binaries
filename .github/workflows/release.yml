@@ -104,7 +104,9 @@ jobs:
         cmake -G Ninja ../llvm -DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" ${{ matrix.config.os-cmake-args }}
 
     - name: build
-      run: ninja clang-format clangd
+      run: |
+        cd ${RELEASE}/build
+        ninja clang-format clangd
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
