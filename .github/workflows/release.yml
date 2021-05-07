@@ -120,4 +120,6 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: clang-tools-${{ matrix.config.name }}-${{ matrix.config.arch }}
-        path: bin/clang*
+        path: |
+          ${RELEASE}/build/bin/clangd*
+          ${RELEASE}/build/bin/clang-format*
