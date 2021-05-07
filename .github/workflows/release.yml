@@ -71,7 +71,7 @@ jobs:
             os-cmake-args: '-DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
           - name: linux
             arch: 386
-            os-cmake-args: '-DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
+            os-cmake-args: '-DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
           - name: linux
             arch: arm
             os-cmake-args: '-DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_DEFAULT_TARGET_TRIPLE=arm-linux-gnueabihf -DLLVM_TARGET_ARCH=ARM -DLLVM_TARGETS_TO_BUILD=ARM -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
