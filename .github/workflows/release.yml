@@ -68,16 +68,16 @@ jobs:
         config:
           - name: linux
             arch: amd64
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
+            os-cmake-args: '-DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
           - name: linux
             arch: 386
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
+            os-cmake-args: '-DCMAKE_VERBOSE_MAKEFILE=ON -DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
           - name: linux
             arch: arm
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_DEFAULT_TARGET_TRIPLE=arm-linux-gnueabihf -DLLVM_TARGET_ARCH=ARM -DLLVM_TARGETS_TO_BUILD=ARM -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
+            os-cmake-args: '-DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_DEFAULT_TARGET_TRIPLE=arm-linux-gnueabihf -DLLVM_TARGET_ARCH=ARM -DLLVM_TARGETS_TO_BUILD=ARM -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
           - name: linux
             arch: arm64
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=AArch64 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=AArch64 -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
+            os-cmake-args: '-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=AArch64 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=AArch64 -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
 
     container:
       image: ghcr.io/arduino/crossbuild:latest
@@ -87,8 +87,11 @@ jobs:
 
     steps:
 
-    - name: Set env vars
-      run: echo "RELEASE=llvm-project-12.0.0.src" >> $GITHUB_ENV
+    - name: Set RELEASE vars
+      run: echo 'RELEASE=llvm-project-12.0.0.src' >> $GITHUB_ENV
+
+    - name: Set COMMON_CMAKE_ARGS var
+      run: echo 'COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_BUILD_TYPE=MinSizeRel' >> $GITHUB_ENV
 
     - name: get llvm-project
       run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${RELEASE}.tar.xz | tar -xJ
@@ -101,19 +104,19 @@ jobs:
         cd ${RELEASE}
         mkdir -p build
         cd build
-        cmake -G Ninja ../llvm -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
+        cmake -G Ninja ../llvm  ${COMMON_CMAKE_ARGS} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
         ninja llvm-tblgen clang-tblgen
         cp -v bin/llvm-tblgen /tmp
         cp -v bin/clang-tblgen /tmp
         rm -rf *
-      if: ${{ matrix.config.arch }} == 'arm' || ${{ matrix.config.arch }} == 'arm64'
+      if: matrix.config.arch == 'arm' || matrix.config.arch == 'arm64'
 
     - name: build clangd and clang-format
       run: |
         cd ${RELEASE}
         mkdir -p build
         cd build
-        cmake -G Ninja ../llvm -DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" ${{ matrix.config.os-cmake-args }}
+        cmake -G Ninja ../llvm ${COMMON_CMAKE_ARGS}  ${{ matrix.config.os-cmake-args }}
         ninja clang-format clangd
 
     - name: upload artifacts
