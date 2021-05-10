@@ -17,7 +17,7 @@ jobs:
             os: macos-latest
             os-cmake-args: '-DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++ -flto" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 ${POSIX_CMAKE_ARGS}'
             build-args: '-j$(sysctl -n hw.ncpu)'
-            # bindir: '/build/bin' # check if useful
+            bindir: '/build/bin'
             arch: amd64
           # - name: windows # TODO still to test
           #   os: windows-latest
@@ -27,7 +27,7 @@ jobs:
             os: windows-latest
             os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
-            # bindir: '/build/MinSizeRel/bin' # check if useful
+            bindir: '/build/MinSizeRel/bin'
             arch: amd64
             extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
             extension: .exe
@@ -40,23 +40,25 @@ jobs:
         shell: bash
     steps:
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${RELEASE}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${{ env.RELEASE }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
 
     - name: cmake
       run: | 
-        cd ${RELEASE}
+        cd ${{ env.RELEASE }}
         mkdir build
         cd build
         cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${RELEASE}/build ${{ matrix.config.build-args }} --target clang-format clangd
+      run: cmake --build ${{ env.RELEASE }}/build ${{ matrix.config.build-args }} --target clang-format clangd
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: clang-tools-${{ matrix.config.name }}-${{ matrix.config.arch }}
-        path: bin/clang*
+        name: clang-${{ matrix.config.name }}-${{ matrix.config.arch }}
+        path: |
+          ${{ env.RELEASE }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
+          ${{ env.RELEASE }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
 
   build-linux:
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
@@ -121,7 +123,7 @@ jobs:
     - name: upload artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: clang-tools-${{ matrix.config.name }}-${{ matrix.config.arch }}
+        name: clang-${{ matrix.config.name }}-${{ matrix.config.arch }}
         path: |
           ${{ env.RELEASE }}/build/bin/clangd*
           ${{ env.RELEASE }}/build/bin/clang-format*
