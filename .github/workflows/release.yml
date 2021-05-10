@@ -88,23 +88,22 @@ jobs:
     steps:
 
     - name: Set RELEASE vars
-      run: echo 'RELEASE=llvm-project-12.0.0.src' >> $GITHUB_ENV
-
-    - name: Set COMMON_CMAKE_ARGS var
-      run: echo 'COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DCMAKE_CXX_FLAGS="-s -static-libstdc++ -static-libgcc" -DCMAKE_BUILD_TYPE=MinSizeRel' >> $GITHUB_ENV
+      run: |
+        echo "RELEASE=llvm-project-12.0.0.src" >> $GITHUB_ENV
+        echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel" >> $GITHUB_ENV
 
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${RELEASE}.tar.xz | tar -xJ
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${{ env.RELEASE }}.tar.xz | tar -xJ
 
     - name: install Ninja
       run: apt update && apt install ninja-build
 
     - name: build llvm-tblgen clang-tblgen with the host toolchain
       run: |
-        cd ${RELEASE}
+        cd ${{ env.RELEASE }}
         mkdir -p build
         cd build
-        cmake -G Ninja ../llvm  ${COMMON_CMAKE_ARGS} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
+        cmake -G Ninja ../llvm  ${{ env.COMMON_CMAKE_ARGS }} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
         ninja llvm-tblgen clang-tblgen
         cp -v bin/llvm-tblgen /tmp
         cp -v bin/clang-tblgen /tmp
@@ -113,10 +112,10 @@ jobs:
 
     - name: build clangd and clang-format
       run: |
-        cd ${RELEASE}
+        cd ${{ env.RELEASE }}
         mkdir -p build
         cd build
-        cmake -G Ninja ../llvm ${COMMON_CMAKE_ARGS}  ${{ matrix.config.os-cmake-args }}
+        cmake -G Ninja ../llvm ${{ env.COMMON_CMAKE_ARGS }}  ${{ matrix.config.os-cmake-args }}
         ninja clang-format clangd
 
     - name: upload artifacts
@@ -124,5 +123,5 @@ jobs:
       with:
         name: clang-tools-${{ matrix.config.name }}-${{ matrix.config.arch }}
         path: |
-          ${RELEASE}/build/bin/clangd*
-          ${RELEASE}/build/bin/clang-format*
+          ${{ env.RELEASE }}/build/bin/clangd*
+          ${{ env.RELEASE }}/build/bin/clang-format*
