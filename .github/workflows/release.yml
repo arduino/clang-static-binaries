@@ -17,12 +17,14 @@ jobs:
             os: macos-latest
             os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
             build-args: '-j$(sysctl -n hw.ncpu)'
+            dep-tool: 'otool -L'
             bindir: '/build/bin'
             arch: amd64
           - name: windows
             os: windows-latest
             os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
+            dep-tool: 'dumpbin'
             bindir: '/build/MinSizeRel/bin'
             extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
             arch: 386
@@ -31,6 +33,7 @@ jobs:
             os: windows-latest
             os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
+            dep-tool: 'dumpbin'
             bindir: '/build/MinSizeRel/bin'
             arch: amd64
             extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
@@ -56,6 +59,12 @@ jobs:
 
     - name: build
       run: cmake --build ${{ env.RELEASE }}/build ${{ matrix.config.build-args }} --target clang-format clangd
+
+    - name: print dependencies
+      run:  |
+        ${{ matrix.config.dep-tool }} ${{ env.RELEASE }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
+        ${{ matrix.config.dep-tool }} ${{ env.RELEASE }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
+
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
