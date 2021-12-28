@@ -1,9 +1,9 @@
-name: release
+name: Release
 
 on:
-  push
-  # tags:
-  #   - "[0-9]+.[0-9]+.[0-9]+*"
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+*"
 
 jobs:
   build-win-mac:
@@ -37,15 +37,18 @@ jobs:
             extension: .exe
     env:
       COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
-      RELEASE: 'llvm-project-12.0.0.src'
     defaults:
       run:
         shell: bash
 
     steps:
 
+    - name: Set RELEASE vars
+      run: |
+        echo "RELEASE=llvm-project-${GITHUB_REF/refs\/tags\//}.src" >> $GITHUB_ENV
+
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${{ env.RELEASE }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${GITHUB_REF/refs\/tags\//}/${{ env.RELEASE }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
 
     - name: cmake
       run: | 
@@ -103,11 +106,11 @@ jobs:
 
     - name: Set RELEASE vars
       run: |
-        echo "RELEASE=llvm-project-12.0.0.src" >> $GITHUB_ENV
+        echo "RELEASE=llvm-project-${GITHUB_REF/refs\/tags\//}.src" >> $GITHUB_ENV
         echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel" >> $GITHUB_ENV
 
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.0/${{ env.RELEASE }}.tar.xz | tar -xJ
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${GITHUB_REF/refs\/tags\//}/${{ env.RELEASE }}.tar.xz | tar -xJ
 
     - name: install Ninja
       run: apt update && apt install ninja-build
