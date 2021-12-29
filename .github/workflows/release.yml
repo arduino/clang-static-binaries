@@ -1,5 +1,8 @@
 name: Release
 
+env:
+  DIST_DIR: dist
+
 on:
   push:
     tags:
@@ -145,5 +148,26 @@ jobs:
       with:
         name: clang-${{ matrix.config.name }}-${{ matrix.config.arch }}
         path: |
-          ${{ env.RELEASE }}/build/bin/clangd*
-          ${{ env.RELEASE }}/build/bin/clang-format*
+          ${{ needs.get-version.outputs.llvm-version }}/build/bin/clangd*
+          ${{ needs.get-version.outputs.llvm-version }}/build/bin/clang-format*
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: 
+      - build-linux
+      - build-win-mac
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          path: ${{ env.DIST_DIR }}
+
+      - name: Create Github Release and upload artifacts
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          # NOTE: "Artifact is a directory" warnings are expected and don't indicate a problem
+          # (all the files we need are in the DIST_DIR root)
+          artifacts: ${{ env.DIST_DIR }}/*
