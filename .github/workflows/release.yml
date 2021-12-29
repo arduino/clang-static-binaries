@@ -115,7 +115,7 @@ jobs:
 
     steps:
     - name: Set env vars
-      run: echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel" >> $GITHUB_ENV
+      run: echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_SYSTEM_NAME=\"Linux\"" >> $GITHUB_ENV
 
     - name: get llvm-project
       run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ needs.get-version.outputs.tag }}/${{ needs.get-version.outputs.llvm-version }}.tar.xz | tar -xJ
