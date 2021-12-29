@@ -6,7 +6,20 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+*"
 
 jobs:
+
+  get-version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.get-tag.outputs.TAG}}
+      llvm-version: ${{ steps.get-version.outputs.LLVM_VERSION}}
+    steps:
+      - id: get-tag
+        run: echo ::set-output name=TAG::${GITHUB_REF/refs\/tags\//}
+      - id: get-version
+        run: echo ::set-output name=LLVM_VERSION::llvm-project-${GITHUB_REF/refs\/tags\//}.src
+
   build-win-mac:
+    needs: get-version
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
     runs-on:
       ${{ matrix.config.os }}
@@ -24,7 +37,7 @@ jobs:
             os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
-            extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
+            extra-tar-args: '--exclude=${{ needs.get-version.outputs.llvm-version }}/clang/test/Driver/Inputs/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libclc/amdgcn-mesa3d'
             arch: 386
             extension: .exe
           - name: windows
@@ -33,7 +46,7 @@ jobs:
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             arch: amd64
-            extra-tar-args: '--exclude=${RELEASE}/clang/test/Driver/Inputs/* --exclude=${RELEASE}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${RELEASE}/libclc/amdgcn-mesa3d'
+            extra-tar-args: '--exclude=${{ needs.get-version.outputs.llvm-version }}/clang/test/Driver/Inputs/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libclc/amdgcn-mesa3d'
             extension: .exe
     env:
       COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
@@ -42,40 +55,35 @@ jobs:
         shell: bash
 
     steps:
-
-    - name: Set RELEASE vars
-      run: |
-        echo "RELEASE=llvm-project-${GITHUB_REF/refs\/tags\//}.src" >> $GITHUB_ENV
-
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${GITHUB_REF/refs\/tags\//}/${{ env.RELEASE }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ needs.get-version.outputs.tag }}/${{ needs.get-version.outputs.llvm-version }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
 
     - name: cmake
-      run: | 
-        cd ${{ env.RELEASE }}
+      run: |
+        cd ${{ needs.get-version.outputs.llvm-version }}
         mkdir build
         cd build
         cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${{ env.RELEASE }}/build ${{ matrix.config.build-args }} --target clang-format clangd
+      run: cmake --build ${{ needs.get-version.outputs.llvm-version }}/build ${{ matrix.config.build-args }} --target clang-format clangd
 
     - name: print macos dependencies
       run:  |
-        otool -L ${{ env.RELEASE }}${{ matrix.config.bindir }}/clangd
-        otool -L ${{ env.RELEASE }}${{ matrix.config.bindir }}/clang-format
+        otool -L ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clangd
+        otool -L ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clang-format
       if: matrix.config.os == 'macos-latest'
-
 
     - name: upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: clang-${{ matrix.config.name }}-${{ matrix.config.arch }}
         path: |
-          ${{ env.RELEASE }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
-          ${{ env.RELEASE }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
+          ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
+          ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
 
   build-linux:
+    needs: get-version
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
     runs-on:
       ubuntu-latest
@@ -103,21 +111,18 @@ jobs:
         password: ${{ secrets.CLANG_CI_PAT }}
 
     steps:
-
-    - name: Set RELEASE vars
-      run: |
-        echo "RELEASE=llvm-project-${GITHUB_REF/refs\/tags\//}.src" >> $GITHUB_ENV
-        echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel" >> $GITHUB_ENV
+    - name: Set env vars
+      run: echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel" >> $GITHUB_ENV
 
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${GITHUB_REF/refs\/tags\//}/${{ env.RELEASE }}.tar.xz | tar -xJ
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ needs.get-version.outputs.tag }}/${{ needs.get-version.outputs.llvm-version }}.tar.xz | tar -xJ
 
     - name: install Ninja
       run: apt update && apt install ninja-build
 
     - name: build llvm-tblgen clang-tblgen with the host toolchain
       run: |
-        cd ${{ env.RELEASE }}
+        cd ${{ needs.get-version.outputs.llvm-version }}
         mkdir -p build
         cd build
         cmake -G Ninja ../llvm  ${{ env.COMMON_CMAKE_ARGS }} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
@@ -129,7 +134,7 @@ jobs:
 
     - name: build clangd and clang-format
       run: |
-        cd ${{ env.RELEASE }}
+        cd ${{ needs.get-version.outputs.llvm-version }}
         mkdir -p build
         cd build
         cmake -G Ninja ../llvm ${{ env.COMMON_CMAKE_ARGS }}  ${{ matrix.config.os-cmake-args }}
