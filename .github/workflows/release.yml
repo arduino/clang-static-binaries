@@ -26,26 +26,26 @@ jobs:
     strategy:
       matrix:
         config:
-          - name: darwin
+          - name: macOS
             os: macos-latest
             os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
-            arch: amd64
-          - name: windows
+            arch: 64bit
+          - name: Windows
             os: windows-latest
             os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extra-tar-args: '--exclude=${{ needs.get-version.outputs.llvm-version }}/clang/test/Driver/Inputs/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libclc/amdgcn-mesa3d'
-            arch: 386
+            arch: 32bit
             extension: .exe
-          - name: windows
+          - name: Windows
             os: windows-latest
             os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
-            arch: amd64
+            arch: 64bit
             extra-tar-args: '--exclude=${{ needs.get-version.outputs.llvm-version }}/clang/test/Driver/Inputs/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libclc/amdgcn-mesa3d'
             extension: .exe
     env:
@@ -91,17 +91,17 @@ jobs:
     strategy:
       matrix:
         config:
-          - name: linux
-            arch: amd64
+          - name: Linux
+            arch: 64bit
             os-cmake-args: '-DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
-          - name: linux
-            arch: 386
+          - name: Linux
+            arch: 32bit
             os-cmake-args: '-DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
-          - name: linux
-            arch: arm
+          - name: Linux
+            arch: ARMv6
             os-cmake-args: '-DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_DEFAULT_TARGET_TRIPLE=arm-linux-gnueabihf -DLLVM_TARGET_ARCH=ARM -DLLVM_TARGETS_TO_BUILD=ARM -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
-          - name: linux
-            arch: arm64
+          - name: Linux
+            arch: ARM64
             os-cmake-args: '-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=AArch64 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=AArch64 -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
 
     container:
@@ -130,7 +130,7 @@ jobs:
         cp -v bin/llvm-tblgen /tmp
         cp -v bin/clang-tblgen /tmp
         rm -rf *
-      if: matrix.config.arch == 'arm' || matrix.config.arch == 'arm64'
+      if: matrix.config.arch == 'ARMv6' || matrix.config.arch == 'ARM64'
 
     - name: build clangd and clang-format
       run: |
@@ -159,12 +159,14 @@ jobs:
       - name: Prepare artifacts for the release
         run: |
           mkdir release
-          declare -a target_folders=("linux_amd64" "linux_386" "linux_arm64" "linux_arm" "darwin_amd64" "windows_386" "windows_amd64")
+          declare -a target_folders=("Linux_64bit" "Linux_32bit" "Linux_ARM64" "Linux_ARMv6" "macOS_64bit" "Windows_32bit" "Windows_64bit")
           for folder in "${target_folders[@]}"
           do
             chmod -v +x clang_$folder/*
-            FILENAME=clang-${{ needs.get-version.outputs.tag }}-${folder}.tar.bz2
-            tar -cvjf $FILENAME clang_$folder/
+            CLANGD=clangd_${{ needs.get-version.outputs.tag }}_${folder}.tar.bz2
+            CLANGFORMAT=clang-format_${{ needs.get-version.outputs.tag }}_${folder}.tar.bz2
+            tar -cvjf $CLANGD clang_$folder/clangd*
+            tar -cvjf $CLANGFORMAT clang_$folder/clang-format*
           done
           mv -v clang*.tar.bz2 release/
 
