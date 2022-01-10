@@ -5,6 +5,11 @@ on:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+*"
 
+env:
+  DIST_DIR: dist
+    # The project's folder on Arduino's download server for uploading builds
+  AWS_PLUGIN_TARGET: /tools/
+
 jobs:
 
   get-version:
@@ -158,7 +163,7 @@ jobs:
 
       - name: Prepare artifacts for the release
         run: |
-          mkdir release
+          mkdir ${{ env.DIST_DIR }}
           declare -a target_folders=("Linux_64bit" "Linux_32bit" "Linux_ARM64" "Linux_ARMv6" "macOS_64bit" "Windows_32bit" "Windows_64bit")
           for folder in "${target_folders[@]}"
           do
@@ -168,7 +173,7 @@ jobs:
             tar -cvjf $CLANGD clang_$folder/clangd*
             tar -cvjf $CLANGFORMAT clang_$folder/clang-format*
           done
-          mv -v clang*.tar.bz2 release/
+          mv -v clang*.tar.bz2 ${{ env.DIST_DIR }}/
 
       - name: Create Github Release and upload artifacts
         uses: ncipollo/release-action@v1
@@ -177,4 +182,14 @@ jobs:
           draft: false
           # NOTE: "Artifact is a directory" warnings are expected and don't indicate a problem
           # (all the files we need are in the release folder root)
-          artifacts: release/*
+          artifacts: ${{ env.DIST_DIR }}/*
+
+      - name: Upload release files on Arduino downloads servers
+        uses: docker://plugins/s3
+        env:
+          PLUGIN_SOURCE: "${{ env.DIST_DIR }}/*"
+          PLUGIN_TARGET: ${{ env.AWS_PLUGIN_TARGET }}
+          PLUGIN_STRIP_PREFIX: "${{ env.DIST_DIR }}/"
+          PLUGIN_BUCKET: ${{ secrets.DOWNLOADS_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
