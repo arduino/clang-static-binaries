@@ -80,7 +80,7 @@ jobs:
       if: matrix.config.os == 'macos-latest'
 
     - name: upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
         path: |
@@ -146,7 +146,7 @@ jobs:
         ninja clang-format clangd
 
     - name: upload artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
         path: |
