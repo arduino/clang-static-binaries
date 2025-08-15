@@ -81,7 +81,7 @@ jobs:
       if: matrix.config.os == 'macos-latest'
 
     - name: upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
         path: |
@@ -147,7 +147,7 @@ jobs:
         ninja clang-format clangd
 
     - name: upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
         path: |
@@ -164,7 +164,7 @@ jobs:
 
     steps:
       - name: Download artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v5
 
       - name: Prepare artifacts for the release
         run: |
