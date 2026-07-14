@@ -50,13 +50,8 @@ jobs:
     - name: get llvm-project
       # https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz
       run: |
-        curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz \
-        | \
-        tar -xJ \
-          --exclude=${{ env.LLVM_VERSION }}/clang/test/Driver/Inputs/* \
-          --exclude=${{ env.LLVM_VERSION }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* \
-          --exclude=${{ env.LLVM_VERSION }}/libclc/amdgcn-mesa3d
-
+        curl -L -o ${{ env.LLVM_VERSION }}.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz
+        tar -xJf ${{ env.LLVM_VERSION }}.tar.xz --exclude lldb/test || tar -xJf ${{ env.LLVM_VERSION }}.tar.xz
     - name: cmake
       run: |
         cd ${{ env.LLVM_VERSION }}
