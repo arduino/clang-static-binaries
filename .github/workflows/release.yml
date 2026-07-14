@@ -35,6 +35,13 @@ jobs:
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
+          - name: Windows
+            arch: ARM64
+            runner: windows-11-arm
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
+            build-args: '--config MinSizeRel'
+            bindir: '/build/MinSizeRel/bin'
+            extension: .exe
     defaults:
       run:
         shell: bash
