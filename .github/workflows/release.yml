@@ -7,89 +7,74 @@ on:
 
 env:
   DIST_DIR: dist
-    # The project's folder on Arduino's download server for uploading builds
+  # The project's folder on Arduino's download server for uploading builds
   AWS_PLUGIN_TARGET: /tools/
   AWS_REGION: "us-east-1"
+  TAG: ${{ github.ref_name }}
+  LLVM_VERSION: llvm-project-${{ github.ref_name }}.src
+  COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
 
 jobs:
-
-  get-version:
-    runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.get-tag.outputs.TAG}}
-      llvm-version: ${{ steps.get-version.outputs.LLVM_VERSION}}
-    steps:
-      - id: get-tag
-        run: echo ::set-output name=TAG::${GITHUB_REF/refs\/tags\//}
-      - id: get-version
-        run: echo ::set-output name=LLVM_VERSION::llvm-project-${GITHUB_REF/refs\/tags\//}.src
-
   build-win-mac:
-    needs: get-version
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
     runs-on:
-      ${{ matrix.config.os }}
+      ${{ matrix.config.runner }}
     strategy:
       matrix:
         config:
           - name: macOS
-            os: macos-latest
+            arch: 64bit
+            runner: macos-latest
             os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
+          - name: Windows
             arch: 64bit
-          - name: Windows
-            os: windows-latest
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
-            build-args: '--config MinSizeRel'
-            bindir: '/build/MinSizeRel/bin'
-            extra-tar-args: '--exclude=${{ needs.get-version.outputs.llvm-version }}/clang/test/Driver/Inputs/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libclc/amdgcn-mesa3d'
-            arch: 32bit
-            extension: .exe
-          - name: Windows
-            os: windows-latest
+            runner: windows-latest
             os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
-            arch: 64bit
-            extra-tar-args: '--exclude=${{ needs.get-version.outputs.llvm-version }}/clang/test/Driver/Inputs/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* --exclude=${{ needs.get-version.outputs.llvm-version }}/libclc/amdgcn-mesa3d'
             extension: .exe
-    env:
-      COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
     defaults:
       run:
         shell: bash
 
     steps:
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ needs.get-version.outputs.tag }}/${{ needs.get-version.outputs.llvm-version }}.tar.xz | tar -xJ ${{ matrix.config.extra-tar-args }}
+      # https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz
+      run: |
+        curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz \
+        | \
+        tar -xJ \
+          --exclude=${{ env.LLVM_VERSION }}/clang/test/Driver/Inputs/* \
+          --exclude=${{ env.LLVM_VERSION }}/libcxx/test/std/input.output/filesystems/Inputs/static_test_env/* \
+          --exclude=${{ env.LLVM_VERSION }}/libclc/amdgcn-mesa3d
 
     - name: cmake
       run: |
-        cd ${{ needs.get-version.outputs.llvm-version }}
+        cd ${{ env.LLVM_VERSION }}
         mkdir build
         cd build
         cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
 
     - name: build
-      run: cmake --build ${{ needs.get-version.outputs.llvm-version }}/build ${{ matrix.config.build-args }} --target clang-format clangd
+      run: cmake --build ${{ env.LLVM_VERSION }}/build ${{ matrix.config.build-args }} --target clang-format clangd
 
     - name: print macos dependencies
       run:  |
-        otool -L ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clangd
-        otool -L ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clang-format
-      if: matrix.config.os == 'macos-latest'
+        otool -L ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd
+        otool -L ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format
+      if: matrix.config.runner == 'macos-latest'
 
     - name: upload artifacts
       uses: actions/upload-artifact@v7
       with:
         name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
         path: |
-          ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
-          ${{ needs.get-version.outputs.llvm-version }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
+          ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
+          ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
 
   build-linux:
-    needs: get-version
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
     runs-on:
       ubuntu-latest
@@ -121,14 +106,14 @@ jobs:
       run: echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_SYSTEM_NAME=\"Linux\"" >> $GITHUB_ENV
 
     - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ needs.get-version.outputs.tag }}/${{ needs.get-version.outputs.llvm-version }}.tar.xz | tar -xJ
+      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz | tar -xJ
 
     - name: install Ninja
       run: apt update && apt install ninja-build
 
     - name: build llvm-tblgen clang-tblgen with the host toolchain
       run: |
-        cd ${{ needs.get-version.outputs.llvm-version }}
+        cd ${{ env.LLVM_VERSION }}
         mkdir -p build
         cd build
         cmake -G Ninja ../llvm  ${{ env.COMMON_CMAKE_ARGS }} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
@@ -140,7 +125,7 @@ jobs:
 
     - name: build clangd and clang-format
       run: |
-        cd ${{ needs.get-version.outputs.llvm-version }}
+        cd ${{ env.LLVM_VERSION }}
         mkdir -p build
         cd build
         cmake -G Ninja ../llvm ${{ env.COMMON_CMAKE_ARGS }}  ${{ matrix.config.os-cmake-args }}
@@ -151,13 +136,13 @@ jobs:
       with:
         name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
         path: |
-          ${{ needs.get-version.outputs.llvm-version }}/build/bin/clangd*
-          ${{ needs.get-version.outputs.llvm-version }}/build/bin/clang-format*
+          ${{ env.LLVM_VERSION }}/build/bin/clangd*
+          ${{ env.LLVM_VERSION }}/build/bin/clang-format*
 
   create-release:
     runs-on: ubuntu-latest
     environment: production
-    needs: [build-linux, build-win-mac, get-version]
+    needs: [build-linux, build-win-mac]
     permissions:
       contents: write
       id-token: write # This is required for requesting the JWT
@@ -173,8 +158,8 @@ jobs:
           for folder in "${target_folders[@]}"
           do
             chmod -v +x clang_$folder/*
-            CLANGD=clangd_${{ needs.get-version.outputs.tag }}_${folder}.tar.bz2
-            CLANGFORMAT=clang-format_${{ needs.get-version.outputs.tag }}_${folder}.tar.bz2
+            CLANGD=clangd_${{ env.TAG }}_${folder}.tar.bz2
+            CLANGFORMAT=clang-format_${{ env.TAG }}_${folder}.tar.bz2
             tar -cvjf $CLANGD clang_$folder/clangd*
             tar -cvjf $CLANGFORMAT clang_$folder/clang-format*
           done
@@ -189,12 +174,12 @@ jobs:
           # (all the files we need are in the release folder root)
           artifacts: ${{ env.DIST_DIR }}/*
 
-      - name: configure aws credentials
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          role-session-name: "github_${{ env.PROJECT_NAME }}"
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Upload release files on Arduino downloads servers
-        run: aws s3 sync ${{ env.DIST_DIR }} s3://${{ secrets.DOWNLOADS_BUCKET }}${{ env.AWS_PLUGIN_TARGET }}
+#      - name: configure aws credentials
+#        uses: aws-actions/configure-aws-credentials@v5
+#        with:
+#          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+#          role-session-name: "github_${{ env.PROJECT_NAME }}"
+#          aws-region: ${{ env.AWS_REGION }}
+#
+#      - name: Upload release files on Arduino downloads servers
+#        run: aws s3 sync ${{ env.DIST_DIR }} s3://${{ secrets.DOWNLOADS_BUCKET }}${{ env.AWS_PLUGIN_TARGET }}
