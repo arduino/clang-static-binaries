@@ -15,7 +15,7 @@ env:
   COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
 
 jobs:
-  build-win-mac:
+  build:
     name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
     runs-on:
       ${{ matrix.config.runner }}
@@ -24,7 +24,13 @@ jobs:
         config:
           - name: macOS
             arch: 64bit
-            runner: macos-latest
+            runner: macos-15-intel
+            os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
+            build-args: '-j$(sysctl -n hw.ncpu)'
+            bindir: '/build/bin'
+          - name: macOS
+            arch: ARM64
+            runner: macos-15
             os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
@@ -42,6 +48,18 @@ jobs:
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
+          - name: Linux
+            arch: 64bit
+            runner: ubuntu-22.04
+            os-cmake-args: ''
+            build-args: '-j$(nproc)'
+            bindir: '/build/bin'
+          - name: Linux
+            arch: ARM64
+            runner: ubuntu-22.04-arm
+            os-cmake-args: ''
+            build-args: '-j$(nproc)'
+            bindir: '/build/bin'
     defaults:
       run:
         shell: bash
@@ -76,75 +94,10 @@ jobs:
           ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
           ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
 
-  build-linux:
-    name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
-    runs-on:
-      ubuntu-latest
-    # apparently env vars cannot be defined here with container (https://github.community/t/how-to-use-env-with-container-image/17252)
-    strategy:
-      matrix:
-        config:
-          - name: Linux
-            arch: 64bit
-            os-cmake-args: '-DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc'
-          - name: Linux
-            arch: 32bit
-            os-cmake-args: '-DCMAKE_CXX_COMPILER=i686-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=i686-ubuntu16.04-linux-gnu-gcc'
-          - name: Linux
-            arch: ARMv6
-            os-cmake-args: '-DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++ -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_DEFAULT_TARGET_TRIPLE=arm-linux-gnueabihf -DLLVM_TARGET_ARCH=ARM -DLLVM_TARGETS_TO_BUILD=ARM -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
-          - name: Linux
-            arch: ARM64
-            os-cmake-args: '-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CROSSCOMPILING=True -DLLVM_TARGET_ARCH=AArch64 -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=AArch64 -DLLVM_TABLEGEN=/tmp/llvm-tblgen -DCLANG_TABLEGEN=/tmp/clang-tblgen'
-
-    container:
-      image: ghcr.io/arduino/crossbuild:latest
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.CLANG_CI_PAT }}
-
-    steps:
-    - name: Set env vars
-      run: echo "COMMON_CMAKE_ARGS=-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS=\"clang;clang-tools-extra\" -DCMAKE_CXX_FLAGS=\"-s -static-libstdc++ -static-libgcc\" -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_SYSTEM_NAME=\"Linux\"" >> $GITHUB_ENV
-
-    - name: get llvm-project
-      run: curl -L https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz | tar -xJ
-
-    - name: install Ninja
-      run: apt update && apt install ninja-build
-
-    - name: build llvm-tblgen clang-tblgen with the host toolchain
-      run: |
-        cd ${{ env.LLVM_VERSION }}
-        mkdir -p build
-        cd build
-        cmake -G Ninja ../llvm  ${{ env.COMMON_CMAKE_ARGS }} -DCMAKE_CXX_COMPILER=x86_64-ubuntu16.04-linux-gnu-g++ -DCMAKE_C_COMPILER=x86_64-ubuntu16.04-linux-gnu-gcc
-        ninja llvm-tblgen clang-tblgen
-        cp -v bin/llvm-tblgen /tmp
-        cp -v bin/clang-tblgen /tmp
-        rm -rf *
-      if: matrix.config.arch == 'ARMv6' || matrix.config.arch == 'ARM64'
-
-    - name: build clangd and clang-format
-      run: |
-        cd ${{ env.LLVM_VERSION }}
-        mkdir -p build
-        cd build
-        cmake -G Ninja ../llvm ${{ env.COMMON_CMAKE_ARGS }}  ${{ matrix.config.os-cmake-args }}
-        ninja clang-format clangd
-
-    - name: upload artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
-        path: |
-          ${{ env.LLVM_VERSION }}/build/bin/clangd*
-          ${{ env.LLVM_VERSION }}/build/bin/clang-format*
-
   create-release:
     runs-on: ubuntu-latest
     environment: production
-    needs: [build-linux, build-win-mac]
+    needs: build
     permissions:
       contents: write
       id-token: write # This is required for requesting the JWT
@@ -156,7 +109,7 @@ jobs:
       - name: Prepare artifacts for the release
         run: |
           mkdir ${{ env.DIST_DIR }}
-          declare -a target_folders=("Linux_64bit" "Linux_32bit" "Linux_ARM64" "Linux_ARMv6" "macOS_64bit" "Windows_32bit" "Windows_64bit")
+          declare -a target_folders=("Linux_64bit" "Linux_ARM64" "macOS_64bit" "macOS_ARM64" "Windows_64bit" "Windows_ARM64")
           for folder in "${target_folders[@]}"
           do
             chmod -v +x clang_$folder/*
