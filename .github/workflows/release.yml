@@ -16,46 +16,40 @@ env:
 
 jobs:
   build:
-    name: build (${{ matrix.config.name }}, ${{ matrix.config.arch }})
+    name: Build (${{ matrix.config.name }})
     runs-on:
       ${{ matrix.config.runner }}
     strategy:
       matrix:
         config:
-          - name: macOS
-            arch: 64bit
+          - name: macOS_64bit
             runner: macos-15-intel
             os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
-          - name: macOS
-            arch: ARM64
+          - name: macOS_ARM64
             runner: macos-15
             os-cmake-args: '-DCMAKE_OSX_DEPLOYMENT_TARGET=10.15 -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang'
             build-args: '-j$(sysctl -n hw.ncpu)'
             bindir: '/build/bin'
-          - name: Windows
-            arch: 64bit
+          - name: Windows_64bit
             runner: windows-latest
             os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
-          - name: Windows
-            arch: ARM64
+          - name: Windows_ARM64
             runner: windows-11-arm
             os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
-          - name: Linux
-            arch: 64bit
+          - name: Linux_64bit
             runner: ubuntu-22.04
             os-cmake-args: ''
             build-args: '-j$(nproc)'
             bindir: '/build/bin'
-          - name: Linux
-            arch: ARM64
+          - name: Linux_ARM64
             runner: ubuntu-22.04-arm
             os-cmake-args: ''
             build-args: '-j$(nproc)'
@@ -65,31 +59,30 @@ jobs:
         shell: bash
 
     steps:
-    - name: get llvm-project
+    - name: Get llvm-project
       # https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz
       run: |
         curl -L -o ${{ env.LLVM_VERSION }}.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz
         tar -xJf ${{ env.LLVM_VERSION }}.tar.xz --exclude lldb/test || tar -xJf ${{ env.LLVM_VERSION }}.tar.xz
-    - name: cmake
+      
+    - name: Build
       run: |
         cd ${{ env.LLVM_VERSION }}
         mkdir build
         cd build
         cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
+        cmake --build ${{ env.LLVM_VERSION }}/build ${{ matrix.config.build-args }} --target clang-format clangd
 
-    - name: build
-      run: cmake --build ${{ env.LLVM_VERSION }}/build ${{ matrix.config.build-args }} --target clang-format clangd
-
-    - name: print macos dependencies
+    - name: Print macOS dependencies
+      if: contains(matrix.config.runner, 'macos')
       run:  |
         otool -L ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd
         otool -L ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format
-      if: matrix.config.runner == 'macos-latest'
 
-    - name: upload artifacts
+    - name: Upload artifacts
       uses: actions/upload-artifact@v7
       with:
-        name: clang_${{ matrix.config.name }}_${{ matrix.config.arch }}
+        name: clang_${{ matrix.config.name }}
         path: |
           ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
           ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
