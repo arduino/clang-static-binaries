@@ -11,8 +11,14 @@ env:
   AWS_PLUGIN_TARGET: /tools/
   AWS_REGION: "us-east-1"
   TAG: ${{ github.ref_name }}
-  LLVM_VERSION: llvm-project-${{ github.ref_name }}.src
-  COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
+  # LLVM_VERSION is derived from TAG by the "Get llvm-project" step, so that a
+  # build-revision tag (e.g. 22.1.8-1) still resolves to the 22.1.8 LLVM sources.
+  # NOTE: zstd is deliberately disabled. LLVM_ENABLE_ZSTD defaults to ON, which means
+  # "link zstd if CMake finds it" -- on the macOS runners it finds Homebrew's copy and
+  # bakes an absolute /opt/homebrew (or /usr/local/opt) path into the binary, which then
+  # fails to load on any Mac without that exact Homebrew install. Nothing we ship needs
+  # zstd. Do NOT disable zlib the same way: clangd's index uses it.
+  COMMON_CMAKE_ARGS: '-DBUILD_SHARED_LIBS=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra"'
 
 jobs:
   build:
@@ -62,22 +68,36 @@ jobs:
     - name: Get llvm-project
       # https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/llvm-project-22.1.8.src.tar.xz
       run: |
-        curl -L -o ${{ env.LLVM_VERSION }}.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.TAG }}/${{ env.LLVM_VERSION }}.tar.xz
-        tar -xJf ${{ env.LLVM_VERSION }}.tar.xz --exclude lldb/test || tar -xJf ${{ env.LLVM_VERSION }}.tar.xz
-      
+        # Strip any build-revision suffix: the tag may be 22.1.8-1, but upstream only
+        # publishes llvmorg-22.1.8. Exposed to later steps via GITHUB_ENV.
+        LLVM_TAG="${TAG%%-*}"
+        LLVM_SRC="llvm-project-${LLVM_TAG}.src"
+        echo "LLVM_VERSION=$LLVM_SRC" >> "$GITHUB_ENV"
+        curl -fL -o "$LLVM_SRC.tar.xz" \
+          "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_TAG}/$LLVM_SRC.tar.xz"
+        tar -xJf "$LLVM_SRC.tar.xz" --exclude lldb/test || tar -xJf "$LLVM_SRC.tar.xz"
+
     - name: Build
       run: |
         cd ${{ env.LLVM_VERSION }}
         mkdir build
         cd build
         cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
-        cmake --build ${{ env.LLVM_VERSION }}/build ${{ matrix.config.build-args }} --target clang-format clangd
+        cmake --build . ${{ matrix.config.build-args }} --target clang-format clangd
 
-    - name: Print macOS dependencies
+    - name: Check macOS dependencies
       if: contains(matrix.config.runner, 'macos')
-      run:  |
-        otool -L ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd
-        otool -L ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format
+      run: |
+        status=0
+        for bin in clangd clang-format; do
+          path="${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/$bin"
+          otool -L "$path"
+          if otool -L "$path" | tail -n +2 | grep -E '/opt/homebrew|/usr/local/opt|/opt/local'; then
+            echo "::error::$bin links a host-specific library path; it will not load on a clean Mac"
+            status=1
+          fi
+        done
+        exit $status
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
