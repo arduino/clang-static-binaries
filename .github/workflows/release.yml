@@ -176,6 +176,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
+          # Tags carrying an -rc suffix (e.g. 22.1.8-rc1) publish as a prerelease, so the
+          # assets are downloadable by exact tag for testing without the release becoming
+          # "Latest" or being picked up by anything tracking releases/latest.
+          prerelease: ${{ contains(env.TAG, '-rc') }}
           # NOTE: "Artifact is a directory" warnings are expected and don't indicate a problem
           # (all the files we need are in the release folder root)
           artifacts: ${{ env.DIST_DIR }}/*
