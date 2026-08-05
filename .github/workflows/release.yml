@@ -54,13 +54,13 @@ jobs:
             bindir: '/build/bin'
           - name: Windows_64bit
             runner: windows-latest
-            os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
+            os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
           - name: Windows_ARM64
             runner: windows-11-arm
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
@@ -113,6 +113,33 @@ jobs:
           fi
         done
         echo "resource headers: $(find "$incdir" -type f | wc -l) files in $incdir"
+        exit $status
+
+    - name: Check Windows CRT linkage
+      if: contains(matrix.config.runner, 'windows')
+      # These binaries must not import the VC++ runtime. On a machine without a
+      # 2019-or-later redistributable they exit immediately with 0xC0000135
+      # (STATUS_DLL_NOT_FOUND) printing nothing at all -- not even for --version --
+      # which surfaces downstream as a language server that hangs with no diagnostics.
+      #
+      # This is easy to get silently wrong: the static CRT used to be selected with
+      # LLVM_USE_CRT_<CONFIG>, implemented by llvm/cmake/modules/ChooseMSVCCRT.cmake,
+      # which LLVM deleted in 18 in favour of CMake's own CMAKE_MSVC_RUNTIME_LIBRARY.
+      # The old flag then became an unused cache variable -- no error, just a "manually
+      # specified variables were not used" notice -- and the builds started importing
+      # the runtime. Assert the linkage instead of trusting the flag.
+      run: |
+        status=0
+        for bin in clangd clang-format; do
+          path="${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/$bin${{ matrix.config.extension }}"
+          for dll in MSVCP140.dll VCRUNTIME140.dll VCRUNTIME140_1.dll; do
+            if grep -a -q "$dll" "$path"; then
+              echo "::error::$bin imports $dll -- the MSVC runtime is linked dynamically"
+              status=1
+            fi
+          done
+        done
+        [[ $status -eq 0 ]] && echo "no MSVC runtime imports: CRT is linked statically"
         exit $status
 
     - name: Check macOS dependencies
