@@ -11,6 +11,20 @@ env:
   AWS_PLUGIN_TARGET: /tools/
   AWS_REGION: "us-east-1"
   TAG: ${{ github.ref_name }}
+  # Directory holding clangd's builtin headers (stddef.h, float.h, the __stddef_* family,
+  # target intrinsics, ...), shipped inside the clangd archive next to the executable.
+  # From clangd 21 on, BuiltinHeaderPolicy defaults to Clangd, so the --query-driver system
+  # include extractor *drops* the cross toolchain's builtin include dir assuming clangd
+  # supplies its own. Shipping the bare executable leaves those headers nowhere to be
+  # found; macOS/Linux mask it via the host SDK, Windows breaks outright.
+  #
+  # Building with -DCLANG_RESOURCE_DIR=<name> makes clangd look in <dir-of-clangd>/<name>
+  # (clang::GetResourcesPath in clang/lib/Options/OptionUtils.cpp) rather than LLVM's
+  # default <dir-of-clangd>/../lib/clang/<major>, and relocates the clang-resource-headers
+  # build output to <bindir>/<name>/include (cmake/Modules/GetClangResourceDir.cmake). A
+  # sibling directory keeps the archive flat, so consumers that extract only
+  # clang_<platform>/clangd are unaffected and the headers survive --strip-components.
+  CLANG_RESOURCE_DIRNAME: clang-resource
   # LLVM_VERSION is derived from TAG by the "Get llvm-project" step, so that a
   # build-revision tag (e.g. 22.1.8-1) still resolves to the 22.1.8 LLVM sources.
   # NOTE: zstd is deliberately disabled. LLVM_ENABLE_ZSTD defaults to ON, which means
@@ -40,13 +54,13 @@ jobs:
             bindir: '/build/bin'
           - name: Windows_64bit
             runner: windows-latest
-            os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
+            os-cmake-args: '-Thost=x64 -DCMAKE_CXX_FLAGS="/MP /std:c++14" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
           - name: Windows_ARM64
             runner: windows-11-arm
-            os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DLLVM_USE_CRT_MINSIZEREL="MT"'
+            os-cmake-args: '-DCMAKE_CXX_FLAGS="/MP /std:c++14" -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded'
             build-args: '--config MinSizeRel'
             bindir: '/build/MinSizeRel/bin'
             extension: .exe
@@ -82,8 +96,51 @@ jobs:
         cd ${{ env.LLVM_VERSION }}
         mkdir build
         cd build
-        cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} ${{ matrix.config.os-cmake-args }}
-        cmake --build . ${{ matrix.config.build-args }} --target clang-format clangd
+        cmake ../llvm ${{ env.COMMON_CMAKE_ARGS }} -DCLANG_RESOURCE_DIR=${{ env.CLANG_RESOURCE_DIRNAME }} ${{ matrix.config.os-cmake-args }}
+        cmake --build . ${{ matrix.config.build-args }} --target clang-format clangd clang-resource-headers
+
+    - name: Check clangd resource headers
+      # Guard against silently shipping a clangd with no builtin headers again: that
+      # failure is invisible on macOS/Linux (the host SDK masks it) and only bites on
+      # Windows, so assert the headers exist on every platform instead.
+      run: |
+        incdir="${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/${{ env.CLANG_RESOURCE_DIRNAME }}/include"
+        status=0
+        for header in stddef.h stdint.h stdarg.h float.h limits.h stdbool.h __stddef_max_align_t.h; do
+          if [[ ! -f "$incdir/$header" ]]; then
+            echo "::error::missing builtin header $header in $incdir"
+            status=1
+          fi
+        done
+        echo "resource headers: $(find "$incdir" -type f | wc -l) files in $incdir"
+        exit $status
+
+    - name: Check Windows CRT linkage
+      if: contains(matrix.config.runner, 'windows')
+      # These binaries must not import the VC++ runtime. On a machine without a
+      # 2019-or-later redistributable they exit immediately with 0xC0000135
+      # (STATUS_DLL_NOT_FOUND) printing nothing at all -- not even for --version --
+      # which surfaces downstream as a language server that hangs with no diagnostics.
+      #
+      # This is easy to get silently wrong: the static CRT used to be selected with
+      # LLVM_USE_CRT_<CONFIG>, implemented by llvm/cmake/modules/ChooseMSVCCRT.cmake,
+      # which LLVM deleted in 18 in favour of CMake's own CMAKE_MSVC_RUNTIME_LIBRARY.
+      # The old flag then became an unused cache variable -- no error, just a "manually
+      # specified variables were not used" notice -- and the builds started importing
+      # the runtime. Assert the linkage instead of trusting the flag.
+      run: |
+        status=0
+        for bin in clangd clang-format; do
+          path="${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/$bin${{ matrix.config.extension }}"
+          for dll in MSVCP140.dll VCRUNTIME140.dll VCRUNTIME140_1.dll; do
+            if grep -a -q "$dll" "$path"; then
+              echo "::error::$bin imports $dll -- the MSVC runtime is linked dynamically"
+              status=1
+            fi
+          done
+        done
+        [[ $status -eq 0 ]] && echo "no MSVC runtime imports: CRT is linked statically"
+        exit $status
 
     - name: Check macOS dependencies
       if: contains(matrix.config.runner, 'macos')
@@ -103,9 +160,13 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: clang_${{ matrix.config.name }}
+        # All three paths live under bindir, so the artifact root (upload-artifact's least
+        # common ancestor of the search paths) stays bindir and the two executables stay at
+        # the artifact root exactly as before.
         path: |
           ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clangd${{ matrix.config.extension }}
           ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/clang-format${{ matrix.config.extension }}
+          ${{ env.LLVM_VERSION }}${{ matrix.config.bindir }}/${{ env.CLANG_RESOURCE_DIRNAME }}/**
 
   create-release:
     runs-on: ubuntu-latest
@@ -125,10 +186,14 @@ jobs:
           declare -a target_folders=("Linux_64bit" "Linux_ARM64" "macOS_64bit" "macOS_ARM64" "Windows_64bit" "Windows_ARM64")
           for folder in "${target_folders[@]}"
           do
-            chmod -v +x clang_$folder/*
+            # Only the executables get the exec bit. The resource headers are data files,
+            # so don't blanket-chmod the folder now that it holds more than two binaries.
+            chmod -v +x clang_$folder/clangd* clang_$folder/clang-format*
             CLANGD=clangd_${{ env.TAG }}_${folder}.tar.bz2
             CLANGFORMAT=clang-format_${{ env.TAG }}_${folder}.tar.bz2
-            tar -cvjf $CLANGD clang_$folder/clangd*
+            # clangd needs its resource headers alongside the binary; clang-format has no
+            # use for them, so that archive keeps exactly the contents it always had.
+            tar -cvjf $CLANGD clang_$folder/clangd* clang_$folder/${{ env.CLANG_RESOURCE_DIRNAME }}
             tar -cvjf $CLANGFORMAT clang_$folder/clang-format*
           done
           mv -v clang*.tar.bz2 ${{ env.DIST_DIR }}/
@@ -138,6 +203,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
+          # Tags carrying an -rc suffix (e.g. 22.1.8-rc1) publish as a prerelease, so the
+          # assets are downloadable by exact tag for testing without the release becoming
+          # "Latest" or being picked up by anything tracking releases/latest.
+          prerelease: ${{ contains(env.TAG, '-rc') }}
           # NOTE: "Artifact is a directory" warnings are expected and don't indicate a problem
           # (all the files we need are in the release folder root)
           artifacts: ${{ env.DIST_DIR }}/*
